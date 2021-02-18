@@ -2,7 +2,8 @@ import discord
 from discord.ext import commands
 import asyncio
 
-from library.file_manager import FileManager, Logs
+from library.managers.file_manager import FileManager, Logs
+from library.managers.sql_manager import SQLManager
 
 
 class LogBot(commands.Bot):
@@ -15,6 +16,10 @@ class LogBot(commands.Bot):
     def initalize(self):
         self.load_extension("library.cogs.log_commands")
 
+    def destroy(self):
+        self.is_logging = False
+        self.loop.get_event_loop().wait_until_complete(asyncio.sleep(1))
+
     def add_log_entry(self, log_key, entry):
         self.log_batch[log_key].append(entry)
 
@@ -25,13 +30,20 @@ class LogBot(commands.Bot):
             for entry_key in self.log_batch:
                 if(len(self.log_batch[entry_key]) > 0):
                     entries = list(self.log_batch[entry_key])
-                    await self.file_manager.appendUserLog(entry_key, entries)
+                    await self.file_manager.appendLogs(entry_key, entries)
                     del self.log_batch[entry_key][:len(entries)]
 
     ### System events  (Use log_entry_key Logs.SYSTEM) ###
     async def on_ready(self):
-        print(f'Logged on as {self.user}!')
-        self.loop.create_task(self.sync_logs())
+        user = {'user': "jakob", 'message': "hey"}
+        db_manager = SQLManager()
+        await db_manager.initalize()
+        db_manager.insert_raw_data("user", user)
+
+        print(db_manager.fetch_table_data("user"))
+
+        #self.loop.create_task(self.sync_logs())
+        #self.add_log_entry(Logs.SYSTEM, f'{self.user} fully initalized and ready to log')
 
     async def on_error(self, *args, **kwargs):
         pass

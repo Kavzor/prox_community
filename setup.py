@@ -6,13 +6,14 @@
 import io
 import os
 import sys
+import signal
 from shutil import rmtree
 
 from setuptools import find_packages, setup, Command
 from dotenv import load_dotenv
 
 from library.bots.log_bot import LogBot
-from library.bot_manager import BotManager
+from library.managers.bot_manager import BotManager
 
 # Package meta-data.
 NAME = 'prox-bots'
@@ -66,10 +67,16 @@ class StartCommand(Command):
     def finalize_options(self):
         pass
 
+    async def destroy_options(self, signal_received, frame):
+        await self.bot_manager.destroy()
+        sys.exit(0)
+
     def run(self):
-        client_manager = BotManager()
-        client_manager.add_bots(self.bots)
-        client_manager.initalize_bots()
+        self.bot_manager = BotManager()
+        self.bot_manager.add(self.bots)
+        self.bot_manager.initalize()
+
+        signal.signal(signal.SIGINT, self.destroy_options)
 
         sys.exit()
 
