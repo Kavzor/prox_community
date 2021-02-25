@@ -29,6 +29,23 @@ class LogCommands(commands.Cog):
             if not 'duration' in connected_time: connected_time['duration'] = 0
             await ctx.send(f"User @{mentions[0]} has played {datetime.timedelta(seconds=connected_time['duration'])} (HH/MM/SS) with @{mentions[1]}")
 
+    @commands.command()
+    async def messages(self, ctx, *argument, member: discord.Member = None):
+        member = member or ctx.author
+        user = await self.bot.fetch_user(argument[0])
+        if(int(argument[1]) <= 10):
+            #self.bot.db_manager.find_user(user.id, user.name)
+            messages = self.bot.db_manager.select_data(Logs.MESSAGE, "owner", like = argument[0])
+            embed = discord.Embed(title = f"Last {argument[1]} messages of {user.name}")
+            channel_messages = {}
+            for message in messages[:5]:
+                if not message['channel'] in channel_messages: channel_messages[message['channel']] = []
+                created_at = datetime.datetime.strptime(message['created_at'], "%a %b %d %H:%M:%S %Y")
+                channel_messages[message['channel']].append(f"({created_at}) {message['content']}")
+            for channel_message in channel_messages:
+                embed.add_field(name = channel_message, value = "\n".join(channel_messages[channel_message]), inline = False)
+            await ctx.message.channel.send(embed = embed)
+
 
 def setup(bot):
     bot.add_cog(LogCommands(bot))
