@@ -48,25 +48,34 @@ class SQLManager(TaskManager):
         user = self.select_data(Logs.USER, id = id)
         if not user:
             user = {'id': id, 'name': name}
+            self.set_data(Logs.USER, user)
         return user
 
-    def select_data(self, table, *params, id = None):
+    def select_data(self, table, *params, id = None, like = None):
         table = table.value
         data = self.__query_cache(table, params, id)
         if data:
             return data
 
-        sql_query = params and f"SELECT json_extract(data{self.__paramatize_json_query(params)}) from {table}" or f"SELECT data FROM {table}"
-        sql_query = id is None and sql_query or sql_query + f" WHERE id = '{id}'"
+        sql_query = params and f"SELECT * FROM {table} WHERE json_extract(data{self.__paramatize_json_query(params)})" or f"SELECT * FROM {table}" #LIKE '%criteria%';
+        #sql_query = params and f"SELECT json_extract(data{self.__paramatize_json_query(params)}) from {table}" or f"SELECT data FROM {table}"
+        if not(id is None): sql_query += f" WHERE id = '{id}'"
+        if not(like is None): sql_query += f" LIKE '%{like}%'"
         if self.log_sqls: print(sql_query)
         try:
             cursor = self.db_connection.cursor()
             data = cursor.execute(sql_query).fetchall()
-            data = params and (len(params) == 1 and [dict(zip(params, entry)) for entry in data] or [dict(zip(params, json.loads(entry[0]))) for entry in data]) or [json.loads(entry[0]) for entry in data]
+            #data = params and (len(params) == 1 and [dict(zip(params, entry)) for entry in data] or [dict(zip(params, json.loads(entry[0]))) for entry in data]) or [json.loads(entry[0]) for entry in data]
             cursor.close()
         except sqlite3.Error as e:
             print(e)
-        return id is not None and data and data[0] or len(data) == 0 and {}
+        array_data = []
+        if len(data[0]) == 2:
+            print(data)
+            for item in data:
+                array_data.append(json.loads(item[1]))
+            return array_data
+        return (not(id is None) and len(data) == 0) and {} or data
 
     def destroy(self):
         super().destroy()
@@ -78,16 +87,15 @@ class SQLManager(TaskManager):
             try: 
                 cursor = self.db_connection.cursor()
                 for entry in entries:
-                    data = json.dumps(entry['data'])
-                    matches = re.findall(r'"\w*":', data)
+                    json_data = json.dumps(entry['data'])
+                    matches = re.findall(r'"\w*":', json_data)
                     for match in matches:
-                        data = data.replace(match, f'"$.{match}"').replace('$."', '$.').replace('":"', '",').replace('{', '').replace('}', '')
+                        json_data = json_data.replace(match, f'"$.{match}"').replace('$."', '$.').replace('":"', '",').replace('{', '').replace('}', '')
                     if entry['data']['id']:
-                        sql_query = f"UPDATE {entry['table']} SET data = JSON_SET(data, {data}) WHERE id = '{entry['data']['id']}'"
+                        sql_query = f"UPDATE {entry['table']} SET data = JSON_SET(data, {json_data}) WHERE id = '{entry['data']['id']}'"
                         rs = cursor.execute(sql_query)
                         if rs.rowcount == 0:
-                            data = str(dict(zip(entry['data'].keys(), entry['data'].values()))).replace(':', ',').replace('{', '').replace(':', ',').replace('}', '')
-                            sql_query = f"INSERT INTO {entry['table']} VALUES ({entry['data']['id']}, JSON_OBJECT({data}))"
+                            sql_query = f"INSERT INTO {entry['table']} VALUES ({entry['data']['id']}, '{json.dumps(entry['data'])}')"
                             rs = cursor.execute(sql_query)
                         if self.log_sqls: print(sql_query)
                     else:
